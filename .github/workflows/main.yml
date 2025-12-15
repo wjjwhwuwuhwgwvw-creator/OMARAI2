@@ -12,65 +12,73 @@ env:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2 ffmpeg unzip jq libstdc++6
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y aria2 ffmpeg wget curl unzip jq libstdc++6
 
-      - name: Install apkeep
-        run: |
+    - name: Install apkeep
+      run: |
+        if [ ! -f apkeep ]; then
           wget -q https://github.com/EFForg/apkeep/releases/latest/download/apkeep-x86_64-unknown-linux-gnu -O apkeep
-          chmod +x apkeep
+        fi
+        chmod +x apkeep
 
-      - name: Install Node.js dependencies
-        run: npm ci --legacy-peer-deps
+    - name: Install Node.js dependencies
+      run: npm ci --legacy-peer-deps
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
-      - name: Prepare directories and data files
-        run: |
-          mkdir -p session data downloads app_cache conversations
+    - name: Create required directories
+      run: |
+        mkdir -p session
+        mkdir -p data
+        mkdir -p downloads
+        mkdir -p app_cache
+        mkdir -p conversations
 
-          declare -A files=(
-            [blocklist.json]='[]'
-            [users.json]='{}'
-            [downloads.json]='{}'
-            [groups.json]='{}'
-          )
+    - name: Initialize data files
+      run: |
+        [ ! -f data/blocklist.json ] && echo '[]' > data/blocklist.json
+        [ ! -f data/users.json ] && echo '{}' > data/users.json
+        [ ! -f data/downloads.json ] && echo '{}' > data/downloads.json
+        [ ! -f data/groups.json ] && echo '{}' > data/groups.json
+        echo "Data files initialized"
 
-          for file in "${!files[@]}"; do
-            [ ! -f "data/$file" ] && echo "${files[$file]}" > "data/$file"
-          done
+    - name: Start API Server
+      run: |
+        cd src/api && python api_server.py &
+        sleep 5
+        echo "API Server started on port 8000"
 
-      - name: Start API Server
-        run: |
-          cd src/api
-          python api_server.py &
-          sleep 5
-
-      - name: Start WhatsApp Bot
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          node bot.js &
-          tail -f /dev/null
+    - name: Start WhatsApp Bot
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        echo "Starting WhatsApp Bot..."
+        node bot.js &
+        
+        while true; do
+          echo "Bot is running..."
+          sleep 60
+        done
